@@ -1,0 +1,844 @@
+---
+title: "Day Two"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+# Simple Linear Regression
+We're going to start off by looking at simple linear regression. This is when we have one predictor and one outcome variable. Remember to create a new `.Rproj` file to keep things organised. Once you've created that, then you can start with a new script.
+
+## The Packages We Need
+
+First we need to install the packages we need.  We're going to install the `tidyverse` packages plus a few others. The package `Hmisc` allows us to use the `rcorr()` function for calculating Pearson's r, and the `performance` package so we can test our model assumptions.  Remember, if you haven't previously installed these packages on your laptop you first need to type `install.packages("packagename")` in the console before you can call the `library()` function for that package. You *may* also need to install the package `see` to get the `performance` package working. If so, do that in the console by typing `install.packages("see")`.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(Hmisc)
+library(performance)
+```
+
+## Import the Data
+
+Import the dataset called `crime_dataset.csv` - this dataset contains population data, housing price index data and crime data for cities in the US. I've stored the data on my website so we can just load it from there.
+
+We can use the function `head()` to display the first few rows of our dataset called "crime".
+
+```{r, message=FALSE}
+crime <- read_csv("https://raw.githubusercontent.com/ajstewartlang/09_glm_regression_pt1/master/data/crime_dataset.csv")
+head(crime)
+```
+
+## Tidy the Data
+
+First let's do some wrangling.  There is one column that combines both City and State information. Let's separate that information out into two new columns called "City" and "State" using the function `separate()`. Then have a look at what you now have. How has the output of `head(crime)` changed from above?
+
+```{r}
+crime <- separate(crime, col = "City, State", into = c("City", "State"))
+head(crime)
+```
+
+Now let's rename the columns to change the name of the "index_nsa" column to "House_price" and get rid of the space in the "Violent Crimes" heading.  See how the output of `head(crime)` has changed again?
+
+```{r}
+crime <- crime %>%
+  rename(House_price = index_nsa) %>%
+  rename(Violent_Crimes = "Violent Crimes")
+head(crime)
+```
+
+## Plot the Data
+
+We might first think that as population size increases, crime rate also increases.  Let's first build a scatter plot.
+
+```{r, warning=FALSE, message=FALSE}
+crime %>%
+  ggplot(aes(x = Population, y = Violent_Crimes)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) +
+  labs(x = "Population", 
+       y = "Violent Crimes")
+```
+
+## Pearson's r
+
+This plot looks pretty interesting.  How about calculating Pearson's r?
+
+```{r}
+rcorr(crime$Population, crime$Violent_Crimes)
+```
+
+Look at the r and p-values - r is =.81 and p < .001. So ~64% of the variance in our Violent_Crimes variable is explained by our Population size variable.  Clearly there is a positive relationship between population size and the rate of violent crime. From the plot, we might conclude that the relationship is being overly influenced by crime in a small number of very large cities (top right of the plot above).  Let's exclude cities with populations greater than 2,000,000
+
+```{r}
+crime_filtered <- filter(crime, Population < 2000000)
+```
+
+Now let's redo the plot.  As there are still likely to be quite a lot of points (and thus overplotting with many points appearing roughly in the same place), we can set the alpha parameter to be < 1 in the `geom_point()` line of code. This parameter corresponds to the translucency of each point. Change it to other values to see what happens. 
+
+```{r, warning=FALSE, message=FALSE}
+crime_filtered %>%
+  ggplot(aes(x = Population, y = Violent_Crimes)) + 
+  geom_point(alpha = .25) + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) +
+  labs(x = "Population", 
+       y = "Violent Crimes")
+```
+
+And calculate Pearson's r.
+
+```{r}
+rcorr(crime_filtered$Population, crime_filtered$Violent_Crimes)
+```
+
+There is a clear positive relationship (r=.69).  Let's build a linear model.
+
+## Model the Data
+
+Imagine we are a city planner, and we want to know by how much we think violent crimes might increase as a function of population size. In other words, we want to work out how the violent crime rate is predicted by population size.
+
+We're going to build two linear models - one `model1` where we're using the mean of our outcome variable as the predictor, and a second `model2` where we are using Population size to predict the Violent Crimes outcome.
+
+```{r}
+model1 <- lm(Violent_Crimes ~ 1, data = crime_filtered)
+model2 <- lm(Violent_Crimes ~ Population, data = crime_filtered)
+```
+
+## Checking Our Assumptions
+
+Let's use the `check_model()` function from the performance package to check the assumptions of our model.
+
+```{r, warning=FALSE, message=FALSE}
+check_model(model2)
+```
+
+These look ok. Let's use the `anova()` function to see if our model with Population as the predictor is better than the one using just the mean.
+
+```{r}
+anova(model1, model2)
+```
+
+It is - the models differ and you'll see the residual sum of squares (or the error) is less in the second model (which has Population as the predictor). This means the deviation between our observed data and the regression line model `model2` is significantly less than the deviation between our observed data and the mean as a model of our data `model1`. So let's get the parameter estimates of `model2`.
+
+## Interpreting Our Model
+
+```{r}
+summary(model2)
+```
+
+The intercept corresponds to where our regression line intercepts the y-axis, and the Population parameter corresponds to the slope of our line. We see that for every increase in population by 1 there is an extra 0.006963 increase in violent crime. 
+
+For a city with a population of about a million, there will be about 11,558 Violent Crimes. We calculate this by multiplying the estimate of our predictor (0.01093) by 1,000,000 and then adding the intercept (628.4).This gives us 11,558.4 crimes - which tallys with what you see in our regression line above. 
+
+But wait, can you think of anything wrong with the way we've built our model?
+
+## Breakout Rooms
+
+You now have three tasks:<br>
+1. Check whether the same relationship holds for population size and robberies.<br>
+2. Are house prices predicted by the number of violent crimes?<br>
+3. Are house prices predicted by population size? 
+
+# Multiple Regression
+
+In standard multiple regression all the predictor variables are entered into the equation and evaluated for their contribution at the same time. Let’s work through a specific example.
+
+An educational psychologist conducted a study that investigated the psycholinguistic variables that contribute to spelling performance in primary school children aged between 7- and 9-years. The researcher presented children with 48 words that varied systematically according to certain features such as age of acquisition, word frequency, word length, and imageability. The psychologist wants to check whether performance on the test accurately reflected children’s spelling ability as estimated by a standardised spelling test. That is, the psychologist wants to check whether her test was appropriate.
+
+Children’s chronological age (in months) `(age)`, their reading age `(RA)`, their standardised reading age `(std_RA)`, and their standardised spelling score `(std_SPELL)` were chosen as predictors. The outcome variable was the percentage correct spelling `(corr_spell)` score attained by each child using the list of 48 words. 
+
+First we need to load the packages we need - the require function assumes they are already on your machine. If they are not, then you need to `install.packages ("packagename")` first:
+
+## The Packages We Need
+
+In addition to the packages we used earlier, we also need the following: `{MASS}`, `{car}`, and `{olsrr}`.
+
+```{r, message=FALSE}
+library(MASS) # Needed for maths functions
+library(car) # Needed for VIF calculation
+```
+
+## Import the Data
+
+You now need to read in the data file from my website.
+
+```{r, message=FALSE}
+MRes_tut2 <- read_csv("https://raw.githubusercontent.com/ajstewartlang/10_glm_regression_pt2/master/data/MRes_tut2.csv")
+```
+
+### Examining Possible Relationships
+
+Before we start, let's look at the relationships between our IVs (predictors) and our DV (outcome).  We can plot graphs depicting the correlations.  We'll plot test performance against each of our four predictors in turn:
+
+```{r, message=FALSE}
+ggplot(MRes_tut2, aes(x = age, y = corr_spell)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) 
+
+ggplot(MRes_tut2, aes(x = RA, y = corr_spell)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) 
+
+ggplot(MRes_tut2, aes(x = std_RA, y = corr_spell)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) 
+
+ggplot(MRes_tut2, aes(x = std_SPELL, y = corr_spell)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) 
+```
+
+## Model the Data
+
+We'll build one model (which we'll call `model0`) that is the mean of our outcome variable, and another model (`model1`) which contains all our predictors:
+
+```{r}
+model0 <- lm(corr_spell ~ 1, data = MRes_tut2)
+model1 <- lm(corr_spell ~ age + RA + std_RA + std_SPELL, data = MRes_tut2)
+```
+
+Let's compare them to each other:
+
+```{r}
+anova(model0, model1)
+```
+
+We see that the models differ from each other (look a the *p*-value of the comparison) and that the model with the four predictors has the lower Residuals (RSS) value meaning there is less error between the model and the observed data relative to the simpler intercept-only model (i.e., the mean) and the observed data.
+
+### Checking our Assumptions
+
+OK, so they differ - now let's plot information about our model assumptions - remember, we are particularly interested in Cook's distance values for our case...
+
+```{r, warning=FALSE, message=FALSE}
+check_model(model1)
+```
+
+The errors looks fairly equally distributed along our fitted values (homoscedasticity) - although a little worse for high fitted values - and from the Q-Q plot we can tell they look fairly normal (they should follow the diagonal).  How about influential cases?  So, Case 10 looks a bit dodgy - it has a high Cook's Distance value - which suggests it is having a disproportionate effect on our model.  Let's exclude it using the `filter()` function - the symbol `!=` means 'does not equal' so we are selecting values other than Case 10.  
+
+### Dropping an Influential Case
+
+```{r}
+MRes_tut2_drop10 <- filter(MRes_tut2, case != "10")
+```
+
+### Re(model) the Data
+
+We now create another model (`model2`) which doesn't include Case 10.
+
+```{r}
+model2 <- lm(corr_spell ~ age + RA + std_RA + std_SPELL, data = MRes_tut2_drop10)
+```
+
+Let's check the model assumptions again using `check_model()`.
+
+### Checking our Assumptions
+
+```{r, warning=FALSE, message=FALSE}
+check_model(model2)
+```
+
+Now, let's look at the multicollinearity values measured by VIF:
+
+```{r}
+vif(model2)
+```
+
+It looks like RA and std_RA are problematic.  We can look at the correlation between them using the `rcorr()` function:
+
+```{r}
+rcorr(MRes_tut2_drop10$RA, MRes_tut2_drop10$std_RA)
+```
+
+### Re(model) the Data
+
+The correlation is pretty high (0.88), so let's exclude the predictor with the highest VIF value (which is RA) and build a new model:
+
+```{r}
+model3 <- lm(corr_spell ~ age + std_RA + std_SPELL, data = MRes_tut2_drop10)
+vif(model3)
+```
+
+### Checking our Assumptions
+
+These values look ok now. Let's check the model assumptions again.
+
+```{r, warning=FALSE, message=FALSE}
+check_model(model3)
+```
+
+### Summary of our Model
+
+Now let's generate the coefficients as this looks like a sensible model.
+
+```{r}
+summary(model3)
+model0 <- lm(corr_spell ~ 1, data = MRes_tut2_drop10)
+anova(model3, model0)
+```
+
+We'd write our equation as something like:
+
+`Spelled correct = -209.44 + 1.10(age) + 0.38(std_RA) + 1.21(std_SPELL) + residual`
+
+# ANOVA
+
+## Loading our Packages
+
+First of all, we need to load the three packages we will be using - they are `tidyverse`, `afex`, and `emmeans`. The `{afex}` package is the one we use for conducting ANOVA. We use the `{emmeans}` package for running follow-up tests on the ANOVA model that we will be building.
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(afex)
+library(emmeans)
+```
+
+## One-way ANOVA
+
+We have 45 participants in a between participants design where we are interested in the effect of beverage consumed on ability on a motor task. Our experimental factor (beverage type) has 3 levels. These are Water vs. Single Espresso vs. Double Espresso, and Ability is our DV measured on a continuous scale. Let's read in our data.
+
+### Reading in our Data
+
+```{r, message=FALSE}
+my_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/cond.csv")
+head(my_data)
+```
+
+We see that we have three variables, but our experimental variable `Condition` is not coded as a factor. Let's fix that...
+
+```{r}
+my_data_tidied <- my_data %>%
+  mutate(Condition = factor(Condition))
+head(my_data_tidied)
+```
+
+### Summarising our Data
+
+Let's work our some summary statistics and build a data visualisation next.
+
+```{r}
+my_data_tidied %>%
+  group_by(Condition) %>%
+  summarise(mean = mean(Ability), 
+            sd = sd(Ability))
+```
+
+### Visualising our Data
+
+```{r}
+set.seed(1234)
+my_data_tidied %>% 
+  ggplot(aes(x = Condition, y = Ability, colour = Condition)) +
+  geom_violin() +
+  geom_jitter(width = .1) +
+  guides(colour = FALSE) +
+  stat_summary(fun.data = "mean_cl_boot", colour = "black") +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) 
+```
+
+We have built a visualisation where we have plotted the raw data points using the `geom_jitter()` function, and the shape of the distribution for each condition using the `geom_violin()` function. We have also added some summary data in the form of the Mean and Confidence Intervals around the Mean using the `stat_summary()` function. The `set.seed()` parameter ensures the random noise added to our jittered points is reproducible.
+
+### Building our ANOVA Model
+
+Let's now build our model using the `aov_4()` function in the `{afex}` package. The syntax for ANOVA models in `aov_4()` is: `aov_4(DV ~ IV + (1 | Participant), data = my_data_tidied)`. The `~` symbol means predicted by, the `(1 | Participant)` term corresponds to our random effect - we obviously can't test all the participants in the world so have taken just a random sample from this population. Finally, we need to specify what dataset we are using by making that clear in the `data = my_data_tidied` bit of the model. We are going to map the output of the `aov()` function onto a variable I'm calling `model`. This means that the ANOVA results will be stored in this variable and will allow us to access them later.
+
+```{r}
+model <- aov_4(Ability ~ Condition + (1 | Participant), data = my_data_tidied)
+```
+
+To get the output of the ANOVA, we can use the `summary()` function with our newly created `model`.
+
+### Interpreting the Model Output
+
+```{r}
+summary(model)
+```
+
+The effect size (ges) is generalised eta squared and for designs with more than one factor it can be a useful indicator of how much variance in the dependent variable can be explained by each factor (plus any interactions between factors).
+
+So, we there is an effect in our model - the F-value is pretty big and the *p*-value pretty small) but we can't know what's driving the difference yet. We need to run some pairwise comparisons using the `emmeans()` function to tell us what mean(s) differ(s) from what other mean(s). 
+
+```{r}
+emmeans(model, pairwise ~ Condition)
+```
+
+Note that the default adjustment for multiple comparisons is Tukey's. We can change that by adding an extra parameter to our model such as `adjust = "bonferonni"`. In this case, it doesn't make any difference to our comparisons.
+
+```{r}
+emmeans(model, pairwise ~ Condition, adjust = "bonferroni")
+```
+
+We found a significant effect of Beverage type (F (2,42) = 297.05, *p* < .001, generalised η2 = .93). Tukey comparisons revealed that the Water group performed significantly worse than the Single Espresso Group (*p* < .001), that the Water group performed significantly worse than the Double Espresso Group (*p* < .001), and that the Single Espresso Group performed significantly worse than the Double Espresso Group (*p* < .001).
+
+In other words, drinking some coffee improves motor performance relative to drinking water, and drinking a lot of coffee improves motor performance even more.
+
+## Repeated Measures ANOVA
+
+Let’s imagine we have an experiment where we asked 32 participants to learn how to pronounce words of differing levels of complexity - Very Easy, Easy, Hard, and Very Hard. They were presented with these words in an initial exposure phase. After a 30 minute break we tested participants by asking them to say the words out loud when they appeared on a computer screen. We recorded their times in seconds. We want to know whether there is a difference in their response times for each level of word complexity. 
+
+### Reading in our Data
+
+First we read in the data.
+```{r, message=FALSE}
+rm_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/rm_data.csv")
+head(rm_data)
+```
+
+We can see from the `head()` function that Condition isn't yet coded as a factor. Let's fix that.
+```{r}
+rm_data_tidied <- rm_data %>%
+  mutate(Condition = factor(Condition))
+head(rm_data_tidied)
+```
+
+### Summarising our Data
+
+Let's generate the Mean and Standard Deviation for each of our four conditions.
+```{r}
+rm_data_tidied %>%
+  group_by(Condition) %>%
+  summarise(mean = mean(RT), sd = sd (RT))
+```
+
+### Visualising our Data
+
+And visualise the data - note here that I am using the `fct_reorder()` function to reorder the levels of our factor based on the RT. This can be useful to make our viusalisations more easily interpretable.
+
+```{r}
+rm_data_tidied %>%
+  ggplot(aes(x = fct_reorder(Condition, RT), y = RT, colour = Condition)) +
+  geom_violin() +
+  geom_jitter(width = .1) +
+  guides(colour = FALSE) +
+  stat_summary(fun.data = "mean_cl_boot", colour = "black") +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) +
+  labs(x = "Condition", y = "RT (s)")
+```
+
+### Building our ANOVA Model
+
+We build our ANOVA model in a similar way as we did previously. Except in this case our random effect we define as `(1 + Condition | Participant)`. In order to capture the fact that our `Condition` is a repeated measures factor, we add it to the random effect term like this.
+
+```{r}
+rm_model <- aov_4(RT ~ Condition + (1 + Condition | Participant), data = rm_data_tidied)
+```
+
+### Interpreting the Model Output
+
+We extract the summary of our model in the same way we did for the between participants ANOVA.
+
+```{r}
+summary(rm_model)
+```
+
+With this option, we didn't get the effect size measure in our measure. We can generate that though by asking for our model to be presented in anova format using the `anova()` function.
+
+```{r}
+anova(rm_model)
+```
+
+The effect size is measured by ges and is the recommended effect size measure for repeated measures designs (Bakeman, 2005). Note the dfs in this output are always corrected as if there is a violation of sphericity (violated when the variances of the differences between all possible pairs of within-subject conditions (i.e., levels of the independent variable) are **not** equal) - to be conservative (and to avoid Type I errors) we might be better off to always choose these corrected dfs.
+
+From this, we can see we have effect of Condition. But we don't know where the differences lie between the different levels of our factor. So we use the `emmeans()` function to find that out. Here we will be using the Bonferroni correction for multiple comparisons.
+
+```{r}
+emmeans(rm_model, pairwise ~ Condition, adjust = "Bonferroni")
+```
+
+From the above we can see that all conditions differ from all other conditions, *apart* from the Easy vs. Very Easy comparison which is not significant.
+
+## Factorial ANOVA
+
+Imagine the case where we’re interested in the effect of positive vs. negative contexts on how quickly (in milliseconds) people respond to positive vs. negative sentences.  We think there might be a priming effect (i.e., people are quicker to respond to positive sentences after positive contexts vs. after negative contexts - and vice versa). So, we have two factors, each with two levels. This is what’s known as a full factorial design where every subject participates in every condition. In the following experiment we have 60 participants.
+
+### Reading in our Data
+
+```{r}
+factorial_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/factorial_data.csv")
+head(factorial_data)
+```
+
+Again we see that our two experimental factors are not coded as factors so let's fix that.
+
+```{r}
+factorial_data_tidied <- factorial_data %>%
+  mutate(Sentence = factor(Sentence), Context = factor(Context))
+head(factorial_data_tidied)
+```
+
+### Summarising our Data
+
+Ler's generate some summary statistics - note, we sepcificy our two grouping variables in the `group_by()` function call.
+
+```{r}
+factorial_data_tidied %>%
+  group_by(Context, Sentence) %>%
+  summarise(mean_rt = mean(RT), 
+            sd_rt = sd(RT))
+```
+
+We have `NA` for two conditions suggesting we have missing data somewhere in our dataset. We're going to use a new package now, called `visdat`. It allows us to visualise our dataset using the `vis_dat()` function and to visualise missing data using the `vis_miss()` function.
+
+```{r}
+library(visdat)
+```
+
+```{r}
+vis_miss(factorial_data_tidied)
+```
+
+We can see in the above visualisation that we do indeed have some missing data. We need to tell R what we want it to do with that. We can use the `na.rm = TRUE` parameter to tell it we want missing data to be ignored.
+
+```{r}
+factorial_data_tidied %>%
+  group_by(Context, Sentence) %>%
+  summarise(mean_rt = mean(RT, na.rm = TRUE), sd_rt = sd(RT, na.rm = TRUE))
+```
+
+Now we have the summary statistics that we expect.
+
+### Visualising our Data
+
+We can use a modification of the `ggplot()` code we've used above to generate our visualisation. Note, I am filtering our the missing data using the `filter()` function before we start our plot.  I am also specifying that we're wanting to plot a combination of our two factors in the `aes()` definition using `Context:Sentence`. There are further things we could modify to improve the look of this graph. Can you figure out ways in which the labelling of the two factors could be clearer?
+
+```{r}
+factorial_data_tidied %>%
+  filter(!is.na(RT)) %>%
+  ggplot(aes(x = Context:Sentence, y = RT, colour = Context:Sentence)) +
+  geom_violin() +
+  geom_jitter(width = .1, alpha = .25) +
+  guides(colour = FALSE) +
+  stat_summary(fun.data = "mean_cl_boot", colour = "black") +
+  theme_minimal() +
+  theme(text = element_text(size = 13)) +
+  labs(x = "Context X Sentence", y = "RT (ms)")
+```
+
+### Building our ANOVA Model
+
+We have our data in long format where every row is one observation. We haven't done any data aggregation. The `aov_4()` function will do this for us as ANOVA models need to be built over means (not raw data).  
+
+Now we're going torun a ANOVA for our factorial design treating participants as a random effect using `aov_4()`. The syntax is very similar to what we ran previously, although this time you'll see we have a new term `Context * Sentence`. This term corresponds to two main effects, plus the interaction between them. It's shorthand for `Context + Sentence + Context:Sentence`. We also specify this in the random effect By setting `na.rm` to be TRUE, we are telling the analysis to ignore individual trials where there might be missing data - effectively this calculates the condition means over the data that is present (and ignores trials where it is missing).
+
+```{r, message=FALSE}
+model_subjects <- aov_4(RT ~ Context * Sentence + (1 + Context * Sentence | Subject), data = factorial_data_tidied, na.rm = TRUE)
+```
+
+We can generate the output using the `anova()` function as we did earlier.
+
+```{r}
+anova(model_subjects)
+```
+
+### Interpreting the Model Output
+
+Let's now interpret our ANOVA where we had participants as our random effect. We will set the error correction adjustment to equal `none` as only some of the comparisons actually make theoretical sense - these are the ones where we're comparing like with like - Sentences of the same type (Positive *or* Negative) preceded by one version of our Context factor vs. the other.
+
+```{r}
+emmeans(model_subjects, pairwise ~ Context * Sentence, adjust = "none")
+```
+
+The key comparisons are the `Negative Negative - Positive Negative` and the `Negative Positive - Positive Positive` ones. In the first case, we are comparing reaction times to Negative Sentences preceded by Negative vs. Positive Contexts, while in the second we are comparing reaction times to Positive Sentences preceded by Negative vs. Positive Contexts. We can manually correct for multiple comparisons (which in this case is 2) by multiplying the corresponding *p*-values by 2 (and putting a limit of 1 on the maximum *p*-value possible). In this case, the first key comparison is sigficant (*p* = .012) while the second is not. We might write up the results like:
+
+We conducted a 2 (Context: Positive vs. Negative) x 2 (Sentence: Positive vs. Negative) repeated measures ANOVA to investigate the influence of Context valence on reaction times to Sentences of Positive or Negative valence.  The ANOVA revealed no effect of Sentence (F < 1), no effect of Context (F(1, 59) = 3.18, *p* = .080, ηG2 =  .006), but an interaction between Sentence and Context (F(1, 59) = 4.60, *p* = .036, ηG2 = .009). 
+
+The interaction was interpreted by conducting Bonferroni-corrected pairwise companions.  These comparisons revealed that the interaction was driven by Negative Sentences being processed faster in Negative vs. Positive Contexts (1,474 ms. vs. 1,628 ms., t(118) = 2.78, *p* = .012) while Positive Sentences were read at similar speeds in Negative vs. Positive Contexts (1,595 ms. vs. 1,579 ms., t(118) = .284, *p* = 1).
+
+### Breakout Rooms
+
+I would now like you to work on the following questions in your rooms.
+
+#### Question 1
+
+Our first data file is called `ANOVA_data1.csv` and can be found here:
+
+https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/ANOVA_data1.csv
+
+24 participants responded to a word that was either common (i.e., high lexical frequency) or rare (i.e., low lexical frequency). This is our IV and is coded as 'high' vs. low'. Our DV is reaction time and is coded as 'RT'. Subject number is coded as 'Subject'. We want to know whether there is a difference between conditions (and if so, where that difference lies). Visualise the data, generate descriptives, and run the appropriate ANOVA to determine whether our independent variable (Condition) has an influence on our dependent variable (RT).
+
+#### Question 2
+
+Our second data file is called `ANOVA_data2.csv` and can be found here:
+
+https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/ANOVA_data2.csv
+
+These data are also from a reaction time experiment but with a slightly more complex design.48 participants responded to a word that differed in how frequent it was. This factor is between participants and we have four levels coded as 'very low', 'low', 'high', and 'very high'. Our DV is reaction time and is coded as 'RT'. Subject number is coded as 'Subject'. We want to know if there is a difference between our conditions (and if so, where that difference lies).
+
+#### Question 3
+
+Our third data file is called `ANOVA_data3.csv` and can be found here:
+
+https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/ANOVA_data3.csv
+
+These data are from a 2 x 2 repeated measures reaction time experiment. We were interested in how quickly participants could respond to images that were Large vs. Small and in Colour vs. Black & White. We expect that Large Colour images will be responded to more quickly than Small B & W images. We're not sure about Small Colour images and Large B & W images. We measured the response times of 24 participants responding to an image in each of these four conditions. We want to determine if there is a difference between our conditions (and if so, where that difference lies).
+
+#### Question 4
+
+Our fourth data file is called `ANOVA_data4.csv` and can be found here:
+
+https://raw.githubusercontent.com/ajstewartlang/11_glm_anova_pt1/master/data/ANOVA_data4.csv
+
+These data are from a 2 x 2 x 3 mixed design experiment where we measured people's response times to maths questions that were either Easy or Hard, and to which they had to respond either under Time Pressure or under No Time Pressure. These are our first two factors and are repeated measures (i.e., everyone saw all 4 conditions). Our third factor is between subjects and corresponds to whether our participants were in one of three groups. The groups were Psychology Students, Maths Students, and Arts Students.  We want to know where a participant's perfomance on the maths questions under time pressure vs. not under time pressure is influenced by which one of these three groups they belong to. Conduct the appropriate ANOVA to answer this question. Remember to start off with some data visualisation(s).
+
+### Answers
+
+#### Question 1
+
+The ANOVA should reveal an effect of Condition with F(1, 22) = 91.217. As there are just two levels to our factor, we don't need to run any follow up tests to know what's driving the effect. By looking at the descriptive statistics, we see that RT is 865 for our `high` condition and 1178 for our `low` condition.
+
+#### Question 2
+
+The ANOVA should reveal an effect of Condition with F(3, 44) = 203.21. To interpret this further we need to run follow up comparisons. Using the Bonferroni correction these should indicate that every level of Condition differs from every other level.
+
+#### Question 3
+
+The ANOVA should reveal a main effect of Size (F(1, 23) = 198.97), a main effect of Colour (F(1, 23) = 524.27), and an interaction between these two factors (F(1, 23) = 11.08). To interpret this interaction further we need to run follow up comparisons. Using the Bonferroni correction these should indicate that every level of Condition differs from every other level.
+
+#### Question 4
+
+This question is slightly trickier than the ones we've looked at so far. After you've built your ANOVA (remember to add only your repeated measures factors to your random effect term), you'll discover a significant 3-way interaction (F(2, 69) = 4.63). You'll need to break this down further - one possible approach would be to look at the interaction between Difficulty and Time Pressure *separately* for each level of our between group factor. In other words, you'd build one 2 x 2 ANOVA model for each of your Student Groups. If you do this, you'll see that the 2 x 2 interaction is not significant for the Arts group, nor the Maths group, but the interaction *is* significant for the Psychology group (F(1, 23) = 11.08)) - as too are the two main effects of Difficulty and Time Pressure. But as these two factors interact, the meaning in our data is in the interaction term (not just these two main effects). 
+
+So, the 3-way interaction was telling us that the 2-way interaction differed for at least one of our Groups (relative to the other Groups). We need to examine this 2-way interaction further for our Psychology group by conducting pairwise comparisons, exactly as you've done above. This will reveal that for our Psychology group, each condition differs significantly from the other conditions. It means that for Psychology students, the Hard problems take long under Time Pressure vs. under No Time Pressure, and the Easy problems take longer under Time Pressure vs. under No Time Pressure (but neither of these are as long as for Hard problems).
+
+# Mixed Models
+
+We will take our first look at (generalised) linear mixed models (GLMMs or LMMs). The use of LMMs is becoming increasingly widespread across many aspect of the Psychological and Life Sciences in place of more traditional models (such as ANOVA) which are based on the general linear model. LMMs work by modelling individual data points (rather than aggregate data), can cope with unbalanced designed, missing data, a combination of categorical and continuous predictors, multiple random effects, participants and item covariates - and with GLMMs we can model data of different distribution types (e.g., data from the binomial distribution). The philosophy begind (G)LMMs is relatively straightforward and can be thought of as an extension of the general linear model. 
+
+## Linear Models Recap
+### Predicting Height From Gender
+
+```{r, message=FALSE}
+library(tidyverse)
+```
+
+We first read in the datafile we need. We are also going to use `mutate()` to turn our `subject` and `gender` columns into factors.
+
+```{r, message=FALSE}
+gender_height_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/15_mixed_models_pt1/master/data/gender_height_data.csv")
+gender_height_data <- gender_height_data %>%
+  mutate(subject = factor(subject),
+            gender = factor(gender))
+```
+
+Now let's plot our data. It's really important to do this before you build any models. You need to make sure the data look as you expect, and if you're trying to fit a linear model to your data it's important to be sure the relationship between your variables is roughly linear. Note, I've added a little bit of horizontal jitter to the plot.
+
+```{r}
+set.seed(1234)
+gender_height_data %>%
+  ggplot(aes(x = gender, y = height)) +
+  geom_jitter(width = .1) +
+  theme_minimal() +
+  labs(x = "Gender", y = "Height (cm)") +
+  scale_x_discrete(labels = c("Female", "Male"))
+```
+
+Now let's build a linear model using the `lm()` function and look at the parameter estimates using `summary()`.
+
+```{r}
+height_model <- lm(height ~ gender, data = gender_height_data)
+summary(height_model)
+```
+
+We can see from this output that the mean height of our Females is 165 cm - this corresponds to the intercept of our model. To calculate the mean height of our Males, we add 12.5cm to our intercept of 165 (giving us 177.5 cm). We see from the t-test that the difference between these two groups is significant (*p* = 0.017).
+
+### Predicting Height From Age 
+
+Now let's look at a case where we have two continuous variables.
+
+```{r, message=FALSE}
+age_height_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/15_mixed_models_pt1/master/data/age_height_data.csv")
+```
+
+Let's plot our data.
+
+```{r}
+age_height_data %>%
+  ggplot(aes(x = age, y = height)) +
+  geom_point() +
+  theme_minimal() +
+  labs(x = "Age (years)", y = "Height (cm)")
+```
+
+The plot suggests there's a linear relaionship between our two variables. Let's build a linear model and examine the parameter estimates.
+
+```{r}
+age_model <- lm(height ~ age, data = age_height_data)
+summary(age_model)
+```
+
+We can see that age is a significant predictor (*p* = .007). We interpret the parameter estimates slighly differently with continuous predictors compared to how we interpreted them when our predictor was categorical (as in the previous example). The intercept corresponds to someone's height when they are zero years old - which obviously makes no sense in this case. The model we've built really only captures the linear relationship between height and age for the age ranges we have data for. The relationship between height and age across the lifespan is obviously not linear! The estimate for age (2.398) should be interpreted as the increase in someone's height for every one year. So, for our dataset people tend to grow 2.398 cm per year.
+
+## Mixed Models
+### One Factor Design With Two Levels
+
+Imagine we are interested in how a person’s reaction time varies whether they’re responding to Large or Small target items. We observe the same 10 people each responding to 5 Large and 5 Small target items. We have 10 observations per person. These observations are not independent of each other as (which is an assumption of a linear model).
+
+Imagine also that we have different Target Items (e.g., 10 different items that were presented in either in Large or Small format). Each Target Item might have been a little different. One particular Target might just be responded to more quickly (regardless of what condition it was in) - in other words, the Target Items will also have different baselines.
+
+We'll be using the `{lme4}` package to build our models so let's load that first. Remember, if you haven't already installed `{lme4}` on your machine remember you need to first run in the Console `install.packages(lme4)`. We'll also load the `{lmerTest}` package to give us estimated *p*-values for our parameter estimates.
+
+```{r, message=FALSE}
+library(lme4)
+library(lmerTest)
+```
+
+Let's read in our data and turn our `subject`, `item`, and `condition` columns into factors.
+
+```{r, message=FALSE}
+mixed_model_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/15_mixed_models_pt1/master/data/mixed_model_data.csv")
+mixed_model_data <- mixed_model_data %>%
+  mutate(subject = factor(subject),
+            item = factor(item),
+            condition = factor(condition))
+```
+
+And generate some descriptives.
+
+```{r, message=FALSE}
+mixed_model_data %>% 
+  group_by(condition) %>%
+  summarise(mean_rt = mean(rt), sd_rt = sd(rt))
+```
+
+We'll build our mixed model with `condition` as a fixed effect, and `subject` and `item` as random effects.
+
+```{r}
+mixed_model <- lmer(rt ~ condition + (1 | subject) + (1 | item), 
+                    data = mixed_model_data)
+summary(mixed_model)
+```
+
+We see from the above output that our Intercept parameter estimate is 854.140. This corresponds to the mean RT for the `Large` experimental condition. The estimate -49.780 corresponds to the difference in mean RT between the `Large` experimental condition and the `Small` experimental condition. In other words, people are 49ms faster in the `Small` condition relative to the `Large` condition. Note, in this example R is using dummy or treatment coding to code the levels of our condition. This is fine for a design with one factor, but becomes problematic when we have factorial designs involving interaction effects. For these kinds of designs we need to use *contrast* coding. We'll cover this later in more detail but it's worth noting at this point that the coding scheme you use can change how you interpret the parameter estimates. Many people get this wrong...
+
+We can use the Likelihood Ratio Test (LRT) to determine whether our model containing our fixed effect of `condition` is better than a model that contains only the random effects. Note, you can only use the LRT when one model is a subset or (or nested within) the other. Let's build a model containing only our random effects. We'll call it `mixed_model_null`.
+
+```{r}
+mixed_model_null <- lmer(rt ~ (1 | subject) + (1 | item), 
+                         data = mixed_model_data)
+```
+
+We can then compare the two models to each other via the LRT using `anova()`.
+
+```{r, message=FALSE}
+anova(mixed_model, mixed_model_null)
+```
+
+We can see the models differ from each other, with the `AIC`, `BIC`, and `deviance` measures all lower for the model with the fixed effect. This indicates that model with the fixed effect of `condition` explains more of the variability in our data than does the model with only random effects (and no fixed effect).
+
+Let's now build a model which models the slopes of our random effects. This means we are allowing the difference between the two levels of our fixed effect to differ in magnitude from one participant to the next, and from one item to the next.
+
+```{r}
+mixed_model_slopes <- lmer(rt ~ condition + (1 + condition | subject)
+                           + (1 + condition | item), data = mixed_model_data)
+```
+
+We can investigate the model parameter estimates using the `summary()` function.
+
+```{r}
+summary(mixed_model_slopes)
+```
+We can see that with a more complex random effect structure (i.e., random slopes as well as intercepts), the effect of our fixed effect of condition is still clearly there (and it is significant).
+
+### One Factor With Three Levels
+
+Imagine we measured 24 subjects’ gaze duration while reading a sentence that appeared in one of three conditions - Negative, Neutral, and Positive. We had 24 items. The study is repeated measures (so everyone saw every condition).
+
+```{r, message=FALSE}
+tidied_factor_1_data <- read_csv("https://raw.githubusercontent.com/ajstewartlang/15_mixed_models_pt1/master/data/one_factor.csv")
+tidied_factor_1_data <- tidied_factor_1_data %>%
+  mutate(Subject = factor(Subject),
+         Item = factor(Item),
+         Condition = factor(Condition))
+```
+
+Let's plot our data.
+
+```{r, message=FALSE}
+tidied_factor_1_data %>%
+  ggplot(aes(x = Condition, y = Gaze, colour = Condition)) +
+  geom_violin(width = .5) +
+  geom_jitter(width = .1, alpha = .1) +
+  stat_summary(fun.data = "mean_cl_boot", colour = "black") +
+  theme_minimal() +
+  labs(x = "Condition",
+       y = "Gaze Duration (ms.)") +
+  guides(colour = "none") +
+  coord_flip()
+```
+
+If we build the following model, we end up with a `singular fit` warning suggesting we are trying to estimate too many parameters than our data supports.
+
+```{r}
+factor_1_model <- lmer(Gaze ~ Condition + (1 + Condition | Subject) + 
+                         (1 + Condition | Item), data = tidied_factor_1_data)
+```
+
+We can simplify the model by dropping random effect terms until the warning goes away and we have a set of parameter estimates we can be confident in.
+
+```{r}
+factor_1_model <- lmer(Gaze ~ Condition + (1 | Subject) + (1 | Item), 
+                       data = tidied_factor_1_data) 
+```
+
+We can check the model assumptions using the `{performance}` package. Remember, we want to see the residuals (roughly) normally distributed.
+
+```{r, warning=FALSE, message=FALSE}
+library(performance)
+check_model(factor_1_model)
+```
+
+These look pretty good to me.
+
+We can generate the summary of the model.
+
+```{r}
+summary(factor_1_model)
+```
+In this case, the Intercept corresponds to the Negative condition - this is because we are still using R dummy coding of contrasts and the reference level is the condition that occurs first alphabetically. The estimates for `conditionNeutral` and `conditionPositive` involve a comparison of these two levels of our factor with the reference level (i.e., the Negative condition). We see that both levels of our factor differ from this reference level.
+
+To determine whether *each* condition differs from each other condition, we can run pairwise comparisons using the `{emmeans}` package.
+
+```{r, message=FALSE}
+library(emmeans)
+```
+
+This is the same type of pairwise comparisons that we ran in the context of ANOVA. By default, Tukey correction is used for multiple comparisons.
+
+```{r}
+emmeans(factor_1_model, pairwise ~ Condition)
+```
+
+We can see with an appropriate correction for multiple comparisons (remember the familywise error rate?), that the *only* pairwise comparison that is significant is the Negative vs Positive condition comparison.
+
+# Your Challenge
+
+Within R, import the dataset “data1.csv” that can be found at:
+
+`https://raw.githubusercontent.com/ajstewartlang/15_mixed_models_pt1/master/data/data1.csv`
+
+These data are from a reaction time experiment. Fifty participants had to respond to a word on the screen. Their task was to press a button on a button box only when they recognized the word (our DV is measured in milliseconds). The words were either Rare or Common. The design is repeated measures. We might expect Common words to be recognized more quickly than Rare words. Run the appropriate LMM to determine whether this is indeed correct.
+
+You should find a mixed model where RTs to the `Rare` condition are about 200 ms. slower than RTs to the `Common` condition, and this is a significant difference - so our prediction is supported. Did you remember to check the model assumptions?
+
+
