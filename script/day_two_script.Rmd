@@ -142,14 +142,7 @@ The intercept corresponds to where our regression line intercepts the y-axis, an
 
 For a city with a population of about a million, there will be about 11,558 Violent Crimes. We calculate this by multiplying the estimate of our predictor (0.01093) by 1,000,000 and then adding the intercept (628.4).This gives us 11,558.4 crimes - which tallys with what you see in our regression line above. 
 
-But wait, can you think of anything wrong with the way we've built our model?
-
-## Breakout Rooms
-
-You now have three tasks:<br>
-1. Check whether the same relationship holds for population size and robberies.<br>
-2. Are house prices predicted by the number of violent crimes?<br>
-3. Are house prices predicted by population size? 
+But wait, can you think of anything wrong with the way we've built our model? The issue is that we've violated the assumption of independence - the cities appear multiple times as we have observations across a number of years. A variable associated with a particular city in any one year won't therefore be independent of the same variable associated with that same city in other years (e.g., house prices in Denver in 2001 won't be independent of house prices in Denver in 2002).
 
 # Multiple Regression
 
@@ -565,9 +558,9 @@ We conducted a 2 (Context: Positive vs. Negative) x 2 (Sentence: Positive vs. Ne
 
 The interaction was interpreted by conducting Bonferroni-corrected pairwise companions.  These comparisons revealed that the interaction was driven by Negative Sentences being processed faster in Negative vs. Positive Contexts (1,474 ms. vs. 1,628 ms., t(118) = 2.78, *p* = .012) while Positive Sentences were read at similar speeds in Negative vs. Positive Contexts (1,595 ms. vs. 1,579 ms., t(118) = .284, *p* = 1).
 
-### Breakout Rooms
+### Your Challenge
 
-I would now like you to work on the following questions in your rooms.
+I would now like you to work on the following questions.
 
 #### Question 1
 
@@ -689,7 +682,6 @@ summary(age_model)
 
 We can see that age is a significant predictor (*p* = .007). We interpret the parameter estimates slighly differently with continuous predictors compared to how we interpreted them when our predictor was categorical (as in the previous example). The intercept corresponds to someone's height when they are zero years old - which obviously makes no sense in this case. The model we've built really only captures the linear relationship between height and age for the age ranges we have data for. The relationship between height and age across the lifespan is obviously not linear! The estimate for age (2.398) should be interpreted as the increase in someone's height for every one year. So, for our dataset people tend to grow 2.398 cm per year.
 
-## Mixed Models
 ### One Factor Design With Two Levels
 
 Imagine we are interested in how a person’s reaction time varies whether they’re responding to Large or Small target items. We observe the same 10 people each responding to 5 Large and 5 Small target items. We have 10 observations per person. These observations are not independent of each other as (which is an assumption of a linear model).
